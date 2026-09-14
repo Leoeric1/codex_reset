@@ -1,0 +1,35 @@
+services:
+  codex-reset-monitor:
+    image: codex-reset-monitor:1.0.0
+    container_name: codex-reset-monitor
+    restart: unless-stopped
+    init: true
+    environment:
+      TZ: Asia/Shanghai
+      DB_PATH: /data/codex-reset.db
+    volumes:
+      - codex-reset-data:/data
+    networks:
+      - leohub-monitor
+    mem_limit: 128m
+    cpus: 0.25
+    pids_limit: 64
+    read_only: true
+    tmpfs:
+      - /tmp:size=8m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "2m"
+        max-file: "3"
+volumes:
+  codex-reset-data:
+    name: codex-reset-data
+networks:
+  leohub-monitor:
+    external: true
+    name: leohub-monitor
