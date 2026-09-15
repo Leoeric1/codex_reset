@@ -1,0 +1,86 @@
+name: Publish container
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Serialize publications so an older run cannot overwrite a newer main image.
+concurrency:
+  group: codex-container-main
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'Leoeric1/codex_reset' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    env:
+      CODEX_IMAGE: ghcr.io/leoeric1/codex-reset-monitor
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Verify source and run behavior tests
+        run: |
+          sha256sum --check SHA256SUMS
+          python -m pip install -r requirements.lock pytest==9.0.2
+          python -m pytest -q
+          docker compose -f compose.ghcr.yaml config --quiet
+      - name: Set up ARM emulation
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+        with:
+          platforms: arm64
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Build and smoke test the runtime image
+        run: |
+          docker buildx build --platform linux/amd64 --load --tag codex-smoke:ci .
+          docker run --rm -i --network none --read-only \
+            --memory 128m --cpus 0.25 --pids-limit 64 \
+            --cap-drop ALL --security-opt no-new-privileges:true \
+            --tmpfs /tmp:size=8m,mode=1777 \
+            codex-smoke:ci python - < tests/container_smoke.py
+      - name: Log in to GHCR
+        env:
+          CODEX_REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CODEX_REGISTRY_USER: ${{ github.actor }}
+        run: printf '%s' "$CODEX_REGISTRY_TOKEN" | docker login ghcr.io --username "$CODEX_REGISTRY_USER" --password-stdin
+      - name: Reject publication from an outdated commit
+        env:
+          CODEX_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request
+          request = urllib.request.Request(
+              f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/git/ref/heads/main",
+              headers={"Authorization": "Bearer " + os.environ["CODEX_API_TOKEN"],
+                       "Accept": "application/vnd.github+json"},
+          )
+          with urllib.request.urlopen(request, timeout=15) as response:
+              current = json.load(response)["object"]["sha"]
+          if current != os.environ["GITHUB_SHA"]:
+              raise SystemExit("main advanced; publish the newer workflow run instead")
+          PY
+      - name: Publish tested image
+        run: |
+          docker buildx build --platform linux/amd64,linux/arm64 --push \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --tag "$CODEX_IMAGE:sha-$GITHUB_SHA" \
+            --tag "$CODEX_IMAGE:main" .
+          printf 'Published %s:main and %s:sha-%s\nVPS deployment is manual in Portainer.\n' \
+            "$CODEX_IMAGE" "$CODEX_IMAGE" "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+      - name: Log out of GHCR
+        if: always()
+        run: docker logout ghcr.io

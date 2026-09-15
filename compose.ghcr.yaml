@@ -1,0 +1,41 @@
+# Existing US VPS / Portainer stack: prebuilt image, loopback ingress, shared data.
+services:
+  codex-reset-monitor:
+    image: ghcr.io/leoeric1/codex-reset-monitor:main
+    pull_policy: always
+    container_name: codex-reset-monitor
+    restart: unless-stopped
+    init: true
+    environment:
+      TZ: Asia/Shanghai
+      DB_PATH: /data/codex-reset.db
+      NOTIFICATION_PROVIDER: disabled
+    ports:
+      - "127.0.0.1:18080:8080"
+    volumes:
+      - codex-reset-data:/data
+    networks:
+      - leohub-monitor
+    mem_limit: 128m
+    cpus: 0.25
+    pids_limit: 64
+    read_only: true
+    tmpfs:
+      - /tmp:size=8m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "2m"
+        max-file: "3"
+volumes:
+  codex-reset-data:
+    external: true
+    name: codex-reset-data
+networks:
+  leohub-monitor:
+    external: true
+    name: leohub-monitor

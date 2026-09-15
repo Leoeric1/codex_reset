@@ -1,5 +1,13 @@
 # Changelog
 
+## 部署流程更新 — 2026-09-15
+
+- 新增 GitHub Actions：main 提交后测试、构建并发布 GHCR amd64 / arm64 镜像，提供 main 和完整提交 SHA 标签。amd64 镜像发布前执行断网、非 root、只读、0.25 CPU / 128 MiB 冒烟检查；VPS 不参与构建。
+- 使用 GitHub 临时 GITHUB_TOKEN 发布，不保存 PAT、不改变镜像可见性，不触发 VPS 自动更新或 Cloudflare 配置修改。
+- 新增独立 compose.ghcr.yaml，按当前 VPS 保留 127.0.0.1:18080、leohub-monitor、codex-reset-data 和资源上限；现有数据卷声明 external，缺失时停止部署。
+- 文档优先复用现有 Portainer Editor：配置私有 GHCR 凭据后改两行，日后手动拉取更新；补充 Git 来源参数和回退说明。本地构建仍可备用。
+- 应用仍为 1.1.0；不改变 AIHOT 300 秒轮询、通知判断、UI 或外发默认 disabled。
+
 ## 1.1.0 — 2026-09-15
 
 - 页面统一为 LeoHub 蓝色深浅主题，复用独立 Logo，收起状态详情、压缩空预告、历史默认展示 10 条。

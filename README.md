@@ -2,7 +2,7 @@
 
 面向个人使用的 Codex 重置状态页，部署目标为 US 独立 VPS，域名 `codex.leohub.cc`。Python / FastAPI / SQLite / asyncio，单容器运行，与量化系统无代码、网络或数据库依赖。
 
-**当前源码版本 1.1.0。** 最初的 V1 本地验收记录保留在 `ACCEPTANCE.md`；其中“尚未部署”是当时状态，不代表当前 VPS 状态。本仓库没有 Git 自动部署配置，部署脚本仍是在 VPS 构建本地镜像后更新容器。现有实例如何更新，须以实际 Portainer/主机配置为准；代码提交不等于实例升级。
+**当前应用版本 1.1.0。** 最初的 V1 本地验收记录保留在 `ACCEPTANCE.md`；其中“尚未部署”是当时状态，不代表当前 VPS 状态。仓库现提供 GitHub Actions 镜像构建，成功后在 Portainer 手动更新容器；不会自动连接 VPS、调用 Portainer 或修改 Cloudflare。代码提交不等于实例升级。
 
 ## 已实现
 
@@ -17,7 +17,43 @@
 - 本地 API 仅提供页面需要的整理字段，不提供原始快照、ETag、英文原文导出。
 - 通知去重记录预留；V1 无外发渠道、不发送消息。首次历史同步标记 `initial_suppressed`，后续变化标记 `disabled`；没有 `sent_at` 就不算已发送。未来接渠道时不能直接扫旧记录补发。
 
-## US VPS 部署：Portainer Stack
+## US VPS 更新：GitHub 构建 + Portainer 一键更新（推荐）
+
+`.github/workflows/publish-container.yml` 在 `main` 提交后自动运行，也支持 Actions 页手动运行。先校验文件、运行 Python 行为测试，再在 GitHub runner 构建并用无网络、非 root、只读文件系统及 0.25 CPU / 128 MiB 条件检查 amd64 镜像，最后发布 amd64 / arm64 镜像。ARM 镜像通过构建，运行检查在 amd64 执行。无需在 VPS 安装构建工具，也无需在仓库保存 PAT。
+
+- 日常更新镜像：`ghcr.io/leoeric1/codex-reset-monitor:main`，指向最近成功发布的版本。
+- 提交定位镜像：`ghcr.io/leoeric1/codex-reset-monitor:sha-<完整提交 SHA>`。需要固定构建产物时使用发布结果中的 digest。
+- 发布权限只用临时 `GITHUB_TOKEN` 的 `contents:read` / `packages:write`。首次发布默认私有，不自动改变仓库或镜像可见性。
+- Actions 成功只表示镜像发布成功，VPS 更新仍由你在 Portainer 点击执行。失败时保留现有运行容器，修复构建后再更新。
+
+### 首次设置：保留当前可编辑的 codex-reset Stack
+
+1. 打开仓库 **Actions → Publish container**，等待对应最新提交显示绿色成功。如果 Actions 被账户策略关闭，先在 GitHub 启用；不要提前使用尚未发布的镜像。
+2. 私有镜像需要在 Portainer **Registries → Add registry → Custom registry** 配置：名称 `GitHub GHCR`，Registry URL `ghcr.io`，Authentication 开启，Username `Leoeric1`，Password 填有该镜像读取权限的 GitHub **PAT (classic)**，仅需 `read:packages`。凭据只输入 Portainer，不贴进 Compose、仓库或聊天。已有适用的 GHCR registry 可复用；Git 仓库的读取凭据与镜像 registry 凭据不是同一个设置。
+3. 打开现有 **Stacks → codex-reset → Editor**，只修改两行：
+
+   ```yaml
+   image: ghcr.io/leoeric1/codex-reset-monitor:main
+   pull_policy: always
+   ```
+
+   原有 `127.0.0.1:18080:8080`、`codex-reset-data:/data`、`leohub-monitor` 及所有资源限制均保持不变。外发 provider 缺省仍为 disabled，可明确增加 `NOTIFICATION_PROVIDER: disabled`。
+4. 点击 **Update the stack**，若弹窗提供 **Re-pull image / Pull latest image**，开启；若有 registry 选择框，选择刚配置的 `GitHub GHCR`。不要删除 Stack、容器数据卷或修改 Cloudflare Tunnel。
+5. 等待容器恢复 `healthy`，打开 `codex.leohub.cc` 确认蓝色界面与原有历史。如果拉取返回 `unauthorized/denied`，检查 registry 凭据及镜像权限；不要改为公开镜像来绕过认证。
+
+以后等 Actions 绿色成功，再在同一 Editor 点 **Update the stack** 并重新拉取即可。这个按钮与 Git 来源 Stack 的 **Pull and redeploy** 名称不同，都可以拉取新镜像更新容器。当前 Stack 无需迁移，也无需每次改镜像版本号。
+
+### 仓库 Compose 与回退
+
+`compose.ghcr.yaml` 是按已确认的 US VPS 配置提供的完整独立文件；不要与 `compose.yaml` 合并使用。它保留回环端口、网络、数据卷、CPU/内存/日志限制，并把**现有** `codex-reset-data` 声明为 external；卷缺失时直接失败，不静默创建空历史库。用于已有 Git 来源 Stack 时，Repository URL 为 `https://github.com/Leoeric1/codex_reset`，Reference 为 `refs/heads/main`，Compose path 为 `compose.ghcr.yaml`。关闭 GitOps 自动更新，手动 **Pull and redeploy** 并开启重新拉取镜像。不要在当前同名容器运行时另建第二个 Stack；当前 Editor 方式无需设置 Git 仓库读取权限。
+
+首次从本地镜像升级失败，可把原 Stack 两行恢复为 `image: codex-reset-monitor:1.0.0` / `pull_policy: never`，关闭重新拉取后更新；须保留该本地镜像和原卷。以后可固定到已验证的 GHCR digest 或提交镜像回退。回退镜像不会恢复数据库时间点，涉及未来破坏性 schema 变更时需单独制定数据恢复方案。本次通知升级只新增表。
+
+GHCR 发布流程只负责镜像，不启用微信推送，也不替代后文的 LeoHub Service Auth 配置。
+
+参考：[GitHub GHCR 权限与认证](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)、[Portainer 更新现有 Stack](https://docs.portainer.io/user/docker/stacks/edit)。
+
+## US VPS 本地构建：备用部署方式
 
 在 US VPS 克隆本仓库并准备镜像：
 
@@ -180,4 +216,4 @@ DB_PATH=/tmp/codex-reset-dev.db .venv/bin/uvicorn app.main:app --host 127.0.0.1 
 
 本次执行 40 项 Python 行为测试；Chromium 检查桌面及 375/390/430px，覆盖双主题、原 Logo、分页筛选和失败保留。跨仓库测试使用合成数据，无生产写入。真实 iPhone Safari、线上 Service Auth、VPS 容器资源占用留待部署验收。
 
-运行资源限制仍为 0.25 CPU / 128 MiB、单 worker。镜像构建不受容器运行配额约束，在 1 核 VPS 上应选空闲时段执行并观察其他应用。新版镜像标签 `1.1.0`，保留旧镜像以便回退；不要删除数据卷。
+运行资源限制仍为 0.25 CPU / 128 MiB、单 worker。推荐使用前文的 GitHub 构建，VPS 仅拉取运行。本地备用构建不受容器运行配额约束，在 1 核 VPS 上应选空闲时段执行并观察其他应用。本地镜像标签 `1.1.0`，保留旧镜像以便回退；不要删除数据卷。
