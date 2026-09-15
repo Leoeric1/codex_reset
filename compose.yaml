@@ -1,12 +1,13 @@
 services:
   codex-reset-monitor:
-    image: codex-reset-monitor:1.0.0
+    image: codex-reset-monitor:1.1.0
     container_name: codex-reset-monitor
     restart: unless-stopped
     init: true
     environment:
       TZ: Asia/Shanghai
       DB_PATH: /data/codex-reset.db
+      NOTIFICATION_PROVIDER: disabled
     volumes:
       - codex-reset-data:/data
     networks:

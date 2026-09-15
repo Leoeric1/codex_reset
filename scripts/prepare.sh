@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 command -v docker >/dev/null
 docker info >/dev/null
 docker compose version
-docker build --pull --tag codex-reset-monitor:1.0.0 .
+docker build --pull --tag codex-reset-monitor:1.1.0 .
 if ! docker network inspect leohub-monitor >/dev/null 2>&1; then
   docker network create leohub-monitor
 fi

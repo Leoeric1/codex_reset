@@ -2,7 +2,7 @@
 
 面向个人使用的 Codex 重置状态页，部署目标为 US 独立 VPS，域名 `codex.leohub.cc`。Python / FastAPI / SQLite / asyncio，单容器运行，与量化系统无代码、网络或数据库依赖。
 
-**本包已完成代码和本地测试；US VPS、Portainer Stack、Cloudflare 路由与 Access、Uptime Kuma 尚未实际配置。** 当前工作环境没有 US SSH 凭据或 Cloudflare 管理会话，也没有 Docker 引擎。不要把交付包完成理解成域名已经上线。验收详情见 `ACCEPTANCE.md`。
+**当前源码版本 1.1.0。** 最初的 V1 本地验收记录保留在 `ACCEPTANCE.md`；其中“尚未部署”是当时状态，不代表当前 VPS 状态。本仓库没有 Git 自动部署配置，部署脚本仍是在 VPS 构建本地镜像后更新容器。现有实例如何更新，须以实际 Portainer/主机配置为准；代码提交不等于实例升级。
 
 ## 已实现
 
@@ -11,7 +11,7 @@
 - 新增、修订、撤回同步，SQLite WAL；仅缓存当前快照，不累计已撤回原文或历史快照副本。
 - 错误/损坏/不完整快照保留最后成功缓存；未知 schema/type/status 拒绝整批写入，不会误清空数据。
 - 429/503 遵循 Retry-After（秒或 HTTP 日期），其他失败指数退避至 1 小时；等待状态持久化，重启不突破等待期。
-- 首页预告、最近全员重置、最近重置卡、历史时间线、类型筛选、中文原帖与原帖链接。历史默认 30 条，可加载更多。
+- 首页预告、最近全员重置、最近重置卡、历史时间线、类型筛选、中文原帖与原帖链接。前端历史默认 10 条，可加载更多；原 API 默认 limit=30 保持兼容。
 - 明确标注确认帖时间、核验日期、原帖时间。原有 schedule 始终只是预告，未知执行时间保持未知。
 - 已过时间区间的预告留在历史；无明确时间且已超过 24 小时的预告不占用首页。此规则仅决定展示位置，不改变上游 announced 状态，也不推断是否已重置。
 - 本地 API 仅提供页面需要的整理字段，不提供原始快照、ETag、英文原文导出。
@@ -27,7 +27,7 @@ cd /opt/codex-reset-monitor
 bash scripts/prepare.sh
 ```
 
-脚本在当前 VPS 构建 `codex-reset-monitor:1.0.0` 本地镜像，创建独立 bridge 网络 `leohub-monitor`，并将现有 `cloudflared`、`uptime-kuma` 容器附加到该网络。它不会移除这些容器的原有网络，不重启已有服务，不操作防火墙、3x-ui 或量化系统。发现 host/none 网络或容器不存在时，会提示而不会强行重建。实际名字不同时可设置 `CLOUDFLARED_CONTAINER` 和 `KUMA_CONTAINER`。
+脚本在当前 VPS 构建 `codex-reset-monitor:1.1.0` 本地镜像，创建独立 bridge 网络 `leohub-monitor`，并将现有 `cloudflared`、`uptime-kuma` 容器附加到该网络。它不会移除这些容器的原有网络，不重启已有服务，不操作防火墙、3x-ui 或量化系统。发现 host/none 网络或容器不存在时，会提示而不会强行重建。实际名字不同时可设置 `CLOUDFLARED_CONTAINER` 和 `KUMA_CONTAINER`。
 
 Portainer 在该 US Docker 环境中选择 **Stacks → Add stack → Web editor**：
 
@@ -141,3 +141,43 @@ DB_PATH=/tmp/codex-reset-dev.db .venv/bin/uvicorn app.main:app --host 127.0.0.1 
 - [AIHOT 使用规则](https://aihot.news/terms)：个人使用与缓存/再分发边界。
 - [Cloudflare 自托管应用](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/) 与 [Tunnel 发布应用](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/)。
 - [Portainer 创建 Stack](https://docs.portainer.io/user/docker/stacks/add)。
+
+## 1.1 LeoHub UI 与通知联动
+
+页面复用 LeoHub Logo 的独立副本及蓝色变量体系，支持设备本地深浅主题；无预告时压缩成一行，状态详情默认收起、异常时展开。手动刷新只读取本地数据，不触发 AIHOT 抓取。正常 AIHOT 间隔仍为 300 秒，退避、ETag、确认帖时间和日期精度语义均不变。
+
+### 私有通知协议 v1
+
+| 接口 | 用途 |
+| --- | --- |
+| `GET /api/notifications/latest` | 默认/最多 10 条，附带 `schema_version`、`initialized`、`epoch`、`cursor`、`updated_at` |
+| `GET /api/notifications/changes?after=0&limit=100` | 按连续序号分页，默认/最多 100 条；返回 `next_cursor`、`has_more` |
+
+`cursor` 是通知变化序号，不是源站时间戳。`epoch` 标识当前数据库通知流；正常重启保持不变。数据库被替换后 Hub 会安全停止同步，不自动重新基线或重放历史。`initialized=false` 时 Hub 不得建立基线；正常空快照完成后可以初始化。
+
+每条变化仅包含 `seq`、`operation`（`upsert` / `cancel`）、`notification_id` 和整理后的 `item`。ID 沿用 `event_id:notification_type`。预告转确认使用新的通知 ID；文字修订使用原 ID，Hub 更新内容而保留已读。
+
+通知正文含 `type/status/kind/title/time/time_precision/time_label/created_at/expires_at/source_url` 及事件/通知 ID。不含原始快照、英文全文、ETag、内部发送状态或配置。变化日志只保存序号、标识和操作，正文实时从当前有效事件投影；撤回后不会通过旧增量页泄露或恢复原文。
+
+升级自动新增 `hub_events`、`notification_changes`、`notification_stream`，不改旧 `notifications` 表的复合主键和 disposition 语义。旧库 `disabled` 记录不回填到 Hub；首次历史仍抑制。Hub 首次成功读取 cursor 时再建立共享基线，已有通知不补报。撤回通过完整快照移除检测；有效预告到期只停止提醒，不推断重置已经发生。
+
+### 认证及部署顺序
+
+1. 更新 Codex 容器，保留原数据卷，确认新接口可以通过个人邮箱 Access 登录访问。
+2. 为 LeoHub 创建专用 Service Token；在 Codex Access 中配置 Service Auth。建议将服务授权限定到 `/api/notifications/*`，若建立更具体路径的 Access application，必须同时保留该路径的个人邮箱 Allow 策略。整个站点现有邮箱登录继续保留，无 Bypass。
+3. 在 LeoHub Pages 生产环境配置 `CODEX_API_URL=https://codex.leohub.cc/api/notifications/latest` 与 `CODEX_SERVICE_CLIENT_ID`、`CODEX_SERVICE_CLIENT_SECRET` 两项 Secrets，然后重新部署 Pages。
+4. Hub 第一次有效读取只建立基线。后续新确认/预告才出现提醒；电脑已读后，手机下一轮检查或切回前台同步消失。
+
+配置未完成时 Hub 会显示“提醒不可用”，不影响服务卡片和编辑。
+
+### 外发通知保持关闭
+
+`NOTIFICATION_PROVIDER=disabled` 为默认和当前唯一实现。`NotificationSender` / `DisabledNotificationSender` 仅预留扩展边界。未来可使用 `pushplus` provider 与 `PUSHPLUS_TOKEN`，但当前即使配置它们也不会发送；不支持的 provider 会记录一条不含配置值的提醒并继续禁用外发，不阻塞监控启动。Hub 提醒不受外发禁用影响。
+
+本版没有发送后台循环、重试任务或第三方推送依赖，也不更新 `sent_at`。未来 sender 必须在快照事务完成后独立运行，失败不得回滚快照；启用渠道时必须建立独立启用基线，不能扫描旧记录补发。
+
+### 验收边界
+
+本次执行 40 项 Python 行为测试；Chromium 检查桌面及 375/390/430px，覆盖双主题、原 Logo、分页筛选和失败保留。跨仓库测试使用合成数据，无生产写入。真实 iPhone Safari、线上 Service Auth、VPS 容器资源占用留待部署验收。
+
+运行资源限制仍为 0.25 CPU / 128 MiB、单 worker。镜像构建不受容器运行配额约束，在 1 核 VPS 上应选空闲时段执行并观察其他应用。新版镜像标签 `1.1.0`，保留旧镜像以便回退；不要删除数据卷。

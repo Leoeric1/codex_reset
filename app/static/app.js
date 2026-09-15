@@ -20,44 +20,55 @@ function caption(e) {return e.time_precision==='confirmed'?'确认帖发布时�
 function original(e) { return e.posts.find(p=>p.url)?.url; }
 function latestCard(id,e) {
   const box=$(id);box.replaceChildren();
-  if(!e){box.append(node('div','latest-date','暂无确认记录'));return;}
-  const time=format(e.time).split(' '),heading=node('div','latest-date',time[0]);
-  if(time[1])heading.append(node('small','',time[1]));box.append(heading,node('div','latest-caption',caption(e)));
-  const meta=node('div','latest-meta');meta.append(node('span','badge '+tint(e),e.confirmation_basis==='receipt_review'?'AIHOT 回执核验':'来源帖子确认'));
+  if(!e){box.append(node('div','empty','暂无确认记录'));return;}
+  const parts=format(e.time).split(' '),date=parts[0].slice(5);
+  const heading=node('div','latest-date',date);
+  if(parts[1])heading.append(node('strong','latest-time',parts[1]));
+  box.append(heading,node('div','latest-caption',caption(e)));
+  const meta=node('div','latest-meta');meta.append(node('span','badge '+tint(e),label(e)),node('span','source','AIHOT'));
   if(original(e))meta.append(link(original(e)));box.append(meta);
 }
 let filter='all',offset=0,busy=false,requestId=0;
 function renderStatus(s){
+  const healthy=s.status==='ok';
+  const text=healthy?'数据正常':s.source==='unavailable'?'数据源不可用':'数据更新延迟';
+  $('source-status').textContent=text;
   $('health-pill').className='pill '+s.color;
-  $('health-pill').lastElementChild.textContent=s.source==='ok'?(s.status==='ok'?'AIHOT 正常':'本地同步延迟'):s.source==='stale'?'源站核验延迟':'数据源暂时不可用';
+  $('health-pill').lastElementChild.textContent=text+(s.checked_at?' · 最近核验 '+format(s.checked_at).split(' ')[1]:'');
+  if(!healthy)$('health-details').open=true;
   $('checked').textContent=format(s.checked_at);$('synced').textContent=format(s.last_sync);$('next').textContent=format(s.next_check_at);
+  $('failures').textContent=s.consecutive_failures||0;$('last-error').textContent=s.last_error||'无';
   latestCard('latest-reset',s.latest_reset);latestCard('latest-credit',s.latest_credit);
-  const announcements=s.announcements, direct=announcements.find(e=>e.type==='direct_reset'),credit=announcements.find(e=>e.type==='reset_credit');
-  const e=direct||credit;
-  $('current-link').replaceChildren();
-  if(!s.has_data){$('current-title').textContent='等待首次同步';$('current-detail').textContent='数据就绪后，这里将显示最新明确预告。';}
-  else if(e){$('current-title').textContent=direct?'Tibo 已发布重置预告':'Tibo 已发布重置卡预告';$('current-detail').textContent=e.schedule?.label||'原帖尚未给出明确时间，请以原帖后续确认为准。';if(original(e))$('current-link').append(link(original(e)));}
-  else{$('current-title').textContent='暂无有效的明确预告';$('current-detail').textContent='最近一次快照未发现有效预告。\n有新消息时，这里会自动更新。';}
-  if(s.status!=='ok'&&s.has_data)$('current-detail').textContent+='\n当前显示最后成功数据，实时状态待核验。';
+  const e=s.announcements.find(e=>e.type==='direct_reset')||s.announcements[0];
+  $('announcement').classList.toggle('has-announcement',!!e);
+  $('current-link').replaceChildren();$('current-detail').hidden=!e;
+  $('current-title').textContent=e?'新的重置预告':s.has_data?'暂无新的重置预告':'等待首次同步';
+  if(e){
+    const schedule=e.schedule||{};
+    const window= schedule.label || (schedule.from ? format(schedule.from)+(schedule.through?' — '+format(schedule.through):''):'时间区间待确认');
+    $('current-detail').textContent=label(e)+' · '+window+'\n发布于 '+format(e.announced_at)+' · AIHOT';
+    if(original(e))$('current-link').append(link(original(e)));
+  }
 }
 function renderEvent(e){
-  const row=node('article','event'),time=node('div','event-time',format(e.time));time.append(node('small','',e.time_precision==='confirmed'?'确认帖时间':e.time_precision==='date'?'核验日期':'原帖时间'));
-  const body=node('div','event-body'),top=node('div','event-top');top.append(node('h3','',e.title),node('span','badge '+tint(e),label(e)));body.append(top);
-  if(e.posts[0])body.append(node('p','event-copy',e.posts[0].text));
-  const notes=[];if(e.scope)notes.push('适用范围：'+e.scope);if(e.schedule)notes.push('原始预告：'+e.schedule.label);
-  if(e.expired)notes.push('历史预告 · 时间已过或超过 24 小时仍无明确时间，未获确认');
-  if(e.confirmation_basis==='receipt_review')notes.push('确认依据：AIHOT 回执核验');
-  if(e.status==='confirmed'&&e.time_precision==='post')notes.push('实际发生日期未知，按原帖时间展示');
-  if(notes.length)body.append(node('div','event-notes',notes.join(' · ')));
-  if(original(e))body.append(link(original(e)));
-  if(e.posts.length>1){const details=node('details'),summary=node('summary','',`查看全部 ${e.posts.length} 条原帖`);details.append(summary);e.posts.forEach(p=>{const item=node('div','post');item.append(node('span','',format(p.time)+' · '+p.stage),node('p','',p.text));if(p.url)item.append(link(p.url));details.append(item);});body.append(details);}
-  row.append(time,node('div','event-dot '+tint(e)),body);return row;
+  const row=node('article','event'),time=node('div','event-time',format(e.time));
+  const body=node('div','event-body'),top=node('div','event-top');
+  top.append(node('span','badge '+tint(e),e.type==='reset_credit'?'重置卡':'全员重置'),node('span','event-stage',e.status==='announced'?'预告帖发布':e.time_precision==='confirmed'?'确认帖发布':e.time_precision==='date'?'核验日期':'原帖发布'));
+  if(original(e))top.append(link(original(e)));
+  body.append(top);
+  const details=node('details','event-details'),summary=node('summary','','展开详情');details.append(summary);
+  if(e.expired)details.append(node('p','event-notes','历史预告 · 已过有效时间，未获确认'));
+  details.append(node('p','event-notes',caption(e)));
+  if(e.schedule)details.append(node('p','event-notes','schedule：'+(e.schedule.label||'未提供说明')+' '+(e.schedule.from?format(e.schedule.from):'')+(e.schedule.through?' — '+format(e.schedule.through):'')));
+  if(e.confirmation_basis)details.append(node('p','event-notes','confirmationBasis：'+e.confirmation_basis));
+  e.posts.forEach(p=>{const item=node('div','post');item.append(node('span','',format(p.time)+' · '+p.stage),node('p','',p.text));if(p.url)item.append(link(p.url));details.append(item);});
+  body.append(details);row.append(time,body);return row;
 }
 async function get(url){const r=await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(12000)});if(!r.ok)throw new Error('请求失败');const type=r.headers.get('content-type')||'';if(!type.includes('application/json'))throw new Error('登录状态可能已失效，请重新打开页面');return r.json();}
 async function load(append=false){
   const id=++requestId;busy=true;$('refresh').disabled=true;$('more').disabled=true;
   try{
-    const q=new URLSearchParams({limit:'30',offset:String(append?offset:0)});if(filter==='announced')q.set('status','announced');else if(filter!=='all')q.set('type',filter);
+    const q=new URLSearchParams({limit:'10',offset:String(append?offset:0)});if(filter==='announced')q.set('status','announced');else if(filter!=='all')q.set('type',filter);
     const [s,data]=await Promise.all([get('/api/status'),get('/api/events?'+q)]);if(id!==requestId)return;
     renderStatus(s);if(!append)$('timeline').replaceChildren();
     data.items.forEach(e=>$('timeline').append(renderEvent(e)));if(!data.total)$('timeline').append(node('p','empty','暂无此类事件。'));
@@ -67,4 +78,11 @@ async function load(append=false){
 }
 $('refresh').addEventListener('click',()=>load());$('more').addEventListener('click',()=>load(true));
 document.querySelectorAll('[data-filter]').forEach(b=>b.addEventListener('click',()=>{filter=b.dataset.filter;document.querySelectorAll('[data-filter]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));load();}));
-load();setInterval(()=>{if(!busy&&!document.hidden&&!document.querySelector('details[open]')&&offset<=30)load();},60000);
+load();setInterval(()=>{if(!busy&&!document.hidden&&!document.querySelector('.event-details[open]')&&offset<=10)load();},60000);
+
+function setTheme(){const light=document.documentElement.dataset.theme==='light';$('theme').textContent=light?'深色':'浅色';$('theme').setAttribute('aria-pressed',String(light));}
+$('theme').addEventListener('click',()=>{const value=document.documentElement.dataset.theme==='light'?'dark':'light';document.documentElement.dataset.theme=value;try{localStorage.setItem('leohub-theme',value);}catch{}setTheme();});
+setTheme();
+function tick(){ $('clock').textContent=new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date()); }
+tick();setInterval(tick,30000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!busy)load();});

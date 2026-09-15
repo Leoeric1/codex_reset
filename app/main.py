@@ -8,7 +8,7 @@ from typing import Literal
 from fastapi import FastAPI, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from .monitor import Monitor, views
+from .monitor import Monitor, views, utcnow
 from .store import Store
 
 STATIC = Path(__file__).parent / "static"
@@ -19,6 +19,8 @@ def create_app(db_path=None, start_worker=True):
 
     @asynccontextmanager
     async def lifespan(app):
+        from .notifications import create_sender
+        app.state.notification_sender = create_sender()
         store = Store(db_path)
         app.state.store = store
         lock, task = None, None
@@ -68,6 +70,17 @@ def create_app(db_path=None, start_worker=True):
         _, rows = views(app.state.store)
         rows = [e for e in rows if (not type or e["type"] == type) and (not status or e["status"] == status)]
         return {"total": len(rows), "items": rows[offset:offset + limit], "offset": offset, "limit": limit}
+
+    @app.get("/api/notifications/latest")
+    def notifications_latest(limit: int = Query(10, ge=1, le=10)):
+        return app.state.store.notification_feed(utcnow(), limit=limit)
+
+    @app.get("/api/notifications/changes")
+    def notifications_changes(after: int = Query(0, ge=0), limit: int = Query(100, ge=1, le=100)):
+        try:
+            return app.state.store.notification_feed(utcnow(), after=after, limit=limit)
+        except ValueError:
+            return JSONResponse({'code': 'cursor_ahead'}, status_code=409)
 
     @app.get("/health")
     def health():

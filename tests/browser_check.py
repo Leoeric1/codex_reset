@@ -21,7 +21,7 @@ result={}
 with TestClient(create_app(args.db,start_worker=False)) as client, sync_playwright() as p:
     browser=p.chromium.launch(executable_path=args.chromium,headless=True,
                              args=['--no-sandbox','--disable-dev-shm-usage','--disable-gpu'])
-    for name,width,height in [('desktop',1440,1200),('mobile',390,844),('small-mobile',320,740)]:
+    for name,width,height in [('desktop',1440,1200),('mobile375',375,812),('mobile390',390,844),('mobile430',430,932)]:
         page=browser.new_page(viewport={'width':width,'height':height},device_scale_factor=1)
         errors=[]
         page.on('pageerror',lambda e:errors.append(str(e)))
@@ -33,16 +33,23 @@ with TestClient(create_app(args.db,start_worker=False)) as client, sync_playwrig
         page.route('http://monitor.test/**',fulfill)
         page.goto('http://monitor.test/')
         page.locator('#refresh:enabled').wait_for()
-        assert page.locator('.event').count()==30
+        assert page.locator('.event').count()==10
         assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
-        page.screenshot(path=str(out/(name+'.png')),full_page=False)
+        assert page.locator('.brand').get_attribute('href')=='https://leohub.cc'
+        assert page.locator('.brand img').evaluate('(e)=>e.naturalWidth>0')
+        page.screenshot(path=str(out/(name+'-dark.png')),full_page=False)
+        page.locator('#theme').click()
+        assert page.locator('html').get_attribute('data-theme')=='light'
+        assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+        page.screenshot(path=str(out/(name+'-light.png')),full_page=False)
+        page.locator('#theme').click()
         page.locator('[data-filter="reset_credit"]').click()
         page.locator('#refresh:enabled').wait_for()
         assert page.locator('.event').count()>0
         assert all('重置卡' in t for t in page.locator('.event .badge').all_text_contents())
         page.locator('[data-filter="all"]').click();page.locator('#refresh:enabled').wait_for()
         page.locator('#more').click();page.locator('#more:enabled').wait_for(state='attached')
-        page.wait_for_function('document.querySelectorAll(".event").length > 30')
+        page.wait_for_function('document.querySelectorAll(".event").length > 10')
         assert not errors, errors
         # Simulate failed local requests; the last rendered events must remain visible.
         count=page.locator('.event').count()
