@@ -2,7 +2,7 @@
 
 面向个人使用的 Codex 重置状态页，部署目标为 US 独立 VPS，域名 `codex.leohub.cc`。Python / FastAPI / SQLite / asyncio，单容器运行，与量化系统无代码、网络或数据库依赖。
 
-**当前应用版本 1.1.0。** 最初的 V1 本地验收记录保留在 `ACCEPTANCE.md`；其中“尚未部署”是当时状态，不代表当前 VPS 状态。仓库现提供 GitHub Actions 镜像构建，成功后在 Portainer 手动更新容器；不会自动连接 VPS、调用 Portainer 或修改 Cloudflare。代码提交不等于实例升级。
+**当前界面为桌面日历版。** 最初的 V1 本地验收记录保留在 `ACCEPTANCE.md`；其中“尚未部署”是当时状态，不代表当前 VPS 状态。仓库现提供 GitHub Actions 镜像构建，成功后在 Portainer 手动更新容器；不会自动连接 VPS、调用 Portainer 或修改 Cloudflare。代码提交不等于实例升级。
 
 ## 已实现
 
@@ -11,7 +11,7 @@
 - 新增、修订、撤回同步，SQLite WAL；仅缓存当前快照，不累计已撤回原文或历史快照副本。
 - 错误/损坏/不完整快照保留最后成功缓存；未知 schema/type/status 拒绝整批写入，不会误清空数据。
 - 429/503 遵循 Retry-After（秒或 HTTP 日期），其他失败指数退避至 1 小时；等待状态持久化，重启不突破等待期。
-- 首页预告、最近全员重置、最近重置卡、历史时间线、类型筛选、中文原帖与原帖链接。前端历史默认 10 条，可加载更多；原 API 默认 limit=30 保持兼容。
+- 桌面首页采用最近全员重置与确认帖、最近重置卡概览，下方左侧月历、右侧日期详情。月历替代旧时间线，提供三类标记、当月数量、跨月浏览、回到最近及当日详情分页；原 `/api/events` 默认 limit=30 保持兼容。
 - 明确标注确认帖时间、核验日期、原帖时间。原有 schedule 始终只是预告，未知执行时间保持未知。
 - 已过时间区间的预告留在历史；无明确时间且已超过 24 小时的预告不占用首页。此规则仅决定展示位置，不改变上游 announced 状态，也不推断是否已重置。
 - 本地 API 仅提供页面需要的整理字段，不提供原始快照、ETag、英文原文导出。
@@ -45,7 +45,7 @@
 
 ### 仓库 Compose 与回退
 
-`compose.ghcr.yaml` 是按已确认的 US VPS 配置提供的完整独立文件；不要与 `compose.yaml` 合并使用。它保留回环端口、网络、数据卷、CPU/内存/日志限制，并把**现有** `codex-reset-data` 声明为 external；卷缺失时直接失败，不静默创建空历史库。用于已有 Git 来源 Stack 时，Repository URL 为 `https://github.com/Leoeric1/codex_reset`，Reference 为 `refs/heads/main`，Compose path 为 `compose.ghcr.yaml`。关闭 GitOps 自动更新，手动 **Pull and redeploy** 并开启重新拉取镜像。不要在当前同名容器运行时另建第二个 Stack；当前 Editor 方式无需设置 Git 仓库读取权限。
+`docker-compose.yml` 是 Git 来源 Stack 的默认部署文件，`compose.ghcr.yaml` 为相同配置的兼容入口；任选其一，不要与 `compose.yaml` 合并使用。它们保留回环端口、网络、数据卷、CPU/内存/日志限制，并把**现有** `codex-reset-data` 声明为 external；卷缺失时直接失败，不静默创建空历史库。用于已有 Git 来源 Stack 时，Repository URL 为 `https://github.com/Leoeric1/codex_reset`，Reference 为 `refs/heads/main`，Compose path 为 `docker-compose.yml`。手动 **Pull and redeploy** 并开启重新拉取镜像；本次不变更现有 GitOps 设置。不要在当前同名容器运行时另建第二个 Stack；当前 Editor 方式无需设置 Git 仓库读取权限。
 
 首次从本地镜像升级失败，可把原 Stack 两行恢复为 `image: codex-reset-monitor:1.0.0` / `pull_policy: never`，关闭重新拉取后更新；须保留该本地镜像和原卷。以后可固定到已验证的 GHCR digest 或提交镜像回退。回退镜像不会恢复数据库时间点，涉及未来破坏性 schema 变更时需单独制定数据恢复方案。本次通知升级只新增表。
 
@@ -217,3 +217,17 @@ DB_PATH=/tmp/codex-reset-dev.db .venv/bin/uvicorn app.main:app --host 127.0.0.1 
 本次执行 40 项 Python 行为测试；Chromium 检查桌面及 375/390/430px，覆盖双主题、原 Logo、分页筛选和失败保留。跨仓库测试使用合成数据，无生产写入。真实 iPhone Safari、线上 Service Auth、VPS 容器资源占用留待部署验收。
 
 运行资源限制仍为 0.25 CPU / 128 MiB、单 worker。推荐使用前文的 GitHub 构建，VPS 仅拉取运行。本地备用构建不受容器运行配额约束，在 1 核 VPS 上应选空闲时段执行并观察其他应用。本地镜像标签 `1.1.0`，保留旧镜像以便回退；不要删除数据卷。
+
+## 桌面月历与日期详情
+
+本次参考日历与详情分栏的信息结构，保留独立 LeoHub 品牌及蓝色深浅主题。上方左侧约 70% 展示最近全员重置与中文确认帖，右侧展示最近重置卡；有效预告单独成条，无有效预告时隐藏。下方约 60% 月历 / 40% 日期详情。详情区独立滚动，同一事件的原预告与确认帖放在一起；不同 ID 不自行合并。没有新增重置概率预测，也没有移动端适配任务。
+
+新增只读 `GET /api/calendar`，参数 `month=YYYY-MM`、`day=YYYY-MM-DD`、`offset=0`、`limit=20`（最大 100）。月份、日期必须有效，显式日期须位于所选月份。返回同一次缓存读取的状态、42 个周一开始的日期摘要、本月数量、选中日期及分页事件；月份不受原历史首页 10 条或旧 API 30 条限制。只发送选中日期的事件详情和状态栏必要内容，不发送全部月份原帖，不请求 AIHOT 或修改通知记录。
+
+- 默认选最近事件的月份和日期；无事件时选北京时间今天。切换月份自动选该月最近有记录的一天；空月份选当月第一天（当前月选今天）。点击相邻月份灰色日期可跳转对应月。
+- 归档日期沿用现有 `time/time_precision`：确认帖时间换算到北京日期、已核验发生日期保持日期精度，未知时按原帖日期。预告按发帖日标橙色虚线，预计区间仅在详情显示，不伪装成未来确定事件。
+- 蓝色表示全员重置确认，紫色表示重置卡确认，橙色表示预告；同日多条分类计数。本月计数不包含相邻月灰色格子中的事件，也不把预告计为确认。
+- 页面刷新仍只读本地缓存，可见时每 60 秒检查，保留所选日期和月份；旧请求晚到不会覆盖新选择。分页遇到快照变化会重新读取当日第一页。请求失败或异常 JSON 保留已显示的内容。
+- 59 项 Python 测试通过；桌面 1280 / 1440 宽度的深浅主题、日期选择、跨月、同日 125 条记录的分页、迟到响应、失败保留及文本安全显示已通过自动化检查。运行 `PYTHONPATH=. python tests/browser_check.py --output /tmp/calendar-preview` 可使用临时合成数据复验，必要时加 `--chromium /path/to/chromium`；无生产数据库或上游请求。
+
+GHCR 镜像成功后沿用当前 Portainer 更新流程，默认 `docker-compose.yml`、原数据卷、Access 保护、0.25 CPU / 128 MiB 与单 worker 保持不变。Hub 通知接口和 AIHOT 同步代码未变。

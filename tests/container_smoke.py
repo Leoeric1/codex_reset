@@ -18,6 +18,10 @@ with TemporaryDirectory() as directory:
         assert latest.json()["initialized"] is False
         assert latest.json()["items"] == []
         assert client.get("/api/notifications/changes?after=0").status_code == 200
+        calendar = client.get("/api/calendar?month=2026-09&day=2026-09-12")
+        assert calendar.status_code == 200
+        assert len(calendar.json()["days"]) == 42
+        assert calendar.json()["items"] == []
     # Exercise the persistent schema reopening path as well.
     with TestClient(create_app(db_path=f"{directory}/smoke.db", start_worker=False)) as client:
         assert client.get("/api/notifications/latest").json()["epoch"] == latest.json()["epoch"]

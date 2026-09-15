@@ -5,7 +5,7 @@ import os
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Literal
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from .monitor import Monitor, views, utcnow
@@ -74,6 +74,16 @@ def create_app(db_path=None, start_worker=True):
     @app.get("/api/notifications/latest")
     def notifications_latest(limit: int = Query(10, ge=1, le=10)):
         return app.state.store.notification_feed(utcnow(), limit=limit)
+
+    @app.get("/api/calendar")
+    def calendar(month: str | None = Query(None, pattern=r"^\d{4}-\d{2}$"),
+                 day: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+                 offset: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=100)):
+        from .calendar import calendar_view
+        try:
+            return calendar_view(app.state.store, month, day, offset, limit)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid calendar month or day") from None
 
     @app.get("/api/notifications/changes")
     def notifications_changes(after: int = Query(0, ge=0), limit: int = Query(100, ge=1, le=100)):

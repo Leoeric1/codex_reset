@@ -4,21 +4,37 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="dark light"><meta name="robots" content="noindex,nofollow">
   <title>Codex Reset · LeoHub</title>
-  <link rel="icon" href="data:,"><link rel="stylesheet" href="/static/style.css?v=20260915">
-  <script src="/static/theme.js?v=20260915"></script><script src="/static/app.js?v=20260915" defer></script>
+  <link rel="icon" href="data:,"><link rel="stylesheet" href="/static/style.css?v=calendar1">
+  <script src="/static/theme.js?v=20260915"></script><script src="/static/app.js?v=calendar1" defer></script>
 </head>
 <body><div class="shell">
 <header class="glass">
   <a class="brand" href="https://leohub.cc" aria-label="返回 LeoHub 首页"><span class="brand-mark" aria-hidden="true"><img src="/static/logo.webp" alt=""></span><span>LEOHUB <small>/ Codex Reset</small></span></a>
-  <div class="header-actions"><span id="source-status" class="source-status">正在连接</span><time id="clock" aria-label="当前北京时间">--:--</time><button id="theme" type="button" aria-label="切换主题">浅色</button><button id="refresh" type="button">↻ 刷新</button></div>
+  <div class="header-actions"><span id="source-status">正在连接</span><time id="clock" aria-label="当前北京时间">--:--</time><button id="theme" type="button" aria-label="切换主题">浅色</button><button id="refresh" type="button">↻ 刷新</button></div>
 </header>
 <main>
-  <div class="page-heading"><h1>Codex Reset</h1><p>全员重置 · 重置卡 · 预告动态</p></div>
+  <div class="page-heading"><div><h1>Codex Reset</h1><p>全员重置 · 重置卡 · 原帖记录</p></div>
+    <details id="health-details" class="health-strip glass"><summary><span id="health-pill" class="pill yellow"><i></i><span>正在读取状态</span></span><span class="details-label">详情</span></summary><div class="health-grid"><div>源站最近核验<strong id="checked">—</strong></div><div>本地最近连接<strong id="synced">—</strong></div><div>下次检查<strong id="next">—</strong></div><div>连续失败次数<strong id="failures">0</strong></div><div>最近错误<strong id="last-error">无</strong></div></div></details>
+  </div>
   <div id="client-error" class="notice" role="alert" hidden></div>
-  <details id="health-details" class="health-strip glass"><summary><span id="health-pill" class="pill yellow"><i></i><span>正在读取状态</span></span><span class="details-label">详情</span></summary><div class="health-grid"><div>源站最近核验<strong id="checked">—</strong></div><div>本地最近连接<strong id="synced">—</strong></div><div>下次检查<strong id="next">—</strong></div><div>连续失败次数<strong id="failures">0</strong></div><div>最近错误<strong id="last-error">无</strong></div></div></details>
-  <section id="announcement" class="announcement" aria-labelledby="current-title"><h2 id="current-title">正在读取预告…</h2><p id="current-detail" hidden></p><div id="current-link"></div></section>
-  <div class="latest-grid"><section class="card"><div class="card-label"><span class="tiny-icon">↻</span>最近全员重置</div><div id="latest-reset">正在读取…</div></section><section class="card"><div class="card-label"><span class="tiny-icon purple">▤</span>最近重置卡</div><div id="latest-credit">正在读取…</div></section></div>
-  <section class="history glass" aria-labelledby="history-title"><div class="history-heading"><h2 id="history-title">历史记录 <span id="count">—</span></h2><div class="filters" aria-label="筛选事件"><button type="button" data-filter="all" aria-pressed="true">全部</button><button type="button" data-filter="direct_reset" aria-pressed="false">全员重置</button><button type="button" data-filter="reset_credit" aria-pressed="false">重置卡</button><button type="button" data-filter="announced" aria-pressed="false">预告</button></div></div><div id="timeline" aria-live="polite"><p class="empty">正在读取事件…</p></div><button id="more" class="load-more" type="button" hidden>加载更多</button></section>
+  <div class="overview">
+    <section class="card reset-card" aria-labelledby="reset-title"><h2 id="reset-title" class="card-label"><span class="tiny-icon">↻</span>最近全员重置</h2><div id="latest-reset" class="reset-content"><p class="empty">正在读取…</p></div></section>
+    <section class="card credit-card" aria-labelledby="credit-title"><h2 id="credit-title" class="card-label"><span class="tiny-icon purple">▤</span>最近重置卡</h2><div id="latest-credit"><p class="empty">正在读取…</p></div></section>
+  </div>
+  <section id="announcement" class="announcement" aria-label="有效预告" hidden></section>
+  <section class="calendar-section" aria-labelledby="calendar-title">
+    <div class="section-heading"><div><h2 id="calendar-title">重置日历</h2><p>选择日期，查看状态与原帖记录。</p></div><div class="legend"><span class="reset-dot">全员重置</span><span class="credit-dot">重置卡</span><span class="announcement-dot">预告</span></div></div>
+    <div id="calendar-panel" class="calendar-panel glass" aria-busy="true">
+      <div class="month-panel">
+        <div class="month-toolbar"><h3 id="month-title">正在读取日历</h3><div class="month-actions"><button id="latest" type="button">回到最近</button><button id="previous-month" type="button" aria-label="上个月">‹</button><button id="next-month" type="button" aria-label="下个月">›</button></div></div>
+        <p id="month-count" class="month-count">—</p>
+        <div class="weekdays" aria-hidden="true"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+        <div id="calendar-days" class="calendar-days" role="group" aria-label="日期选择"></div>
+        <p class="calendar-note">按北京时间归档。预告标在发帖当天，预计时间见详情。</p>
+      </div>
+      <aside class="day-panel" aria-labelledby="day-title"><div class="day-heading"><h3 id="day-title">日期详情</h3><span id="day-count"></span></div><div id="day-scroll" class="day-scroll"><div id="day-events" aria-live="polite"><p class="empty">正在读取记录…</p></div><button id="more" class="load-more" type="button" hidden>加载当日更多记录</button></div></aside>
+    </div>
+  </section>
 </main>
-<footer><span>LEOHUB / Codex Reset</span><a href="https://aihot.news/codex-reset" target="_blank" rel="noopener noreferrer">数据来源 AIHOT ↗</a><p>北京时间 · 确认帖发布时间不等于实际执行时间；仅展示公开事件，不代表个人账户额度。</p></footer>
+<footer><div><span>LEOHUB / Codex Reset</span><a href="https://aihot.news/codex-reset" target="_blank" rel="noopener noreferrer">数据来源 AIHOT ↗</a></div><p>统一使用北京时间。确认帖发布时间不等于实际执行时间；日期不明时按原帖日期归档。仅记录公开事件，不代表个人账户额度。</p></footer>
 </div></body></html>
